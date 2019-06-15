@@ -1,0 +1,256 @@
+---
+layout: post
+title:Centos7安装mysql-5.5.60
+date: 2019-06-15
+Author: Broken47
+categories: 
+tags: [Linux, 教程]
+comments: true
+---
+
+# Centos7安装mysql-5.5.60
+
+#### 1.安装之前的准备
+
+- 卸载centos7自带的mysql和mariadb
+
+  ```
+  rpm -qa|grep -i mysql
+  rpm -qa|grep mariadb     #查看一下是否有mariadb相关的包
+  rpm -e --nodeps mariadb-libs-5.5.52-1.el7.x86_64      #把查询到的包卸载
+  ```
+
+- **停止mysql服务、删除之前安装的mysql**
+
+  删除命令：`rpm -e –nodeps 包名`
+
+  ```
+  rpm -ev MySQL-client-5.5.25a-1.rhel5 
+  rpm -ev MySQL-server-5.5.25a-1.rhel5
+  ```
+
+  如果提示依赖包错误，则使用以下命令尝试
+
+  ```
+  rpm -ev MySQL-client-5.5.25a-1.rhel5 --nodeps
+  ```
+
+  如果提示错误：`error: %preun(xxxxxx) scriptlet failed, exit status 1`
+
+  则用以下命令尝试：
+
+  ```
+  rpm -e --noscripts MySQL-client-5.5.25a-1.rhel5
+  ```
+
+- **查找之前老版本mysql的目录、并且删除老版本mysql的文件和库**
+
+  ```
+  find / -name mysql
+  ```
+
+  查找结果如下：
+
+  ```
+  find / -name mysql 
+  /var/lib/mysql
+  /var/lib/mysql/mysql
+  /usr/lib64/mysql
+  ```
+
+  删除对应的mysql目录
+
+  ```
+  rm -rf /var/lib/mysql
+  rm -rf /var/lib/mysql
+  rm -rf /usr/lib64/mysql
+  ```
+
+  
+
+  **注意：**卸载后/etc/my.cnf不会删除，需要进行手工删除
+
+  ```
+  rm -rf /etc/my.cnf
+  ```
+
+- 下载mysql安装包
+
+  ```
+  wget https://dev.mysql.com/get/Downloads/MySQL-5.5/mysql-5.5.60.tar.gz
+  ```
+
+- 下载cmake安装包
+
+  ```
+  wget https://cmake.org/files/v3.10/cmake-3.10.2.tar.gz
+  ```
+
+- 添加mysql用户和组
+
+  ```
+  groupadd mysql
+  useradd mysql -s /sbin/nologin -M -g mysql   # -s /sbin/nologin 表示禁止该用户登录，加强安全； -g mysql 指定属于mysql组； -M 表示不创建用户家目录
+  ```
+
+- 安装ncurses-devel
+
+  ```
+  yum install ncurses-devel -y
+  ```
+
+- 安装cmake
+
+  ```
+  tar zxvf cmake-3.10.2.tar.gz -C /usr/local
+  cd /usr/local/cmake-3.10.2
+  ./configure
+  gmake && gmake install
+  ```
+
+#### 2.安装myqsl
+
+```
+tar zxvf mysql-5.5.60.tar.gz
+cd mysql-5.5.60
+cmake . -DCMAKE_INSTALL_PREFIX=/application/mysql-5.5.60 -DMYSQL_DATADIR=/application/mysql-5.5.60/data -DMYSQL_UNIX_ADDR=/application/mysql-5.5.60/mysql.sock -DDEFAULT_CHARSET=utf8 -DDEFAULT_COLLATION=utf8_general_ci -DENABLED_LOCAL_INFILE=ON -DWITH_INNOBASE_STORAGE_ENGINE=1 -DWITH_FEDERATED_STORAGE_ENGINE=1 -DWITH_BLACKHOLE_STORAGE_ENGINE=1 -DWITHOUT_EXAMPLE_STORAGE_ENGINE=1 -DWITH_FAST_MUTEXES=1 -DWITH_ZLIB=bundled -DENABLED_LOCAL_INFILE=1 -DWITH_READLINE=1 -DWITH_EMBEDDED_SERVER=1 -DWITH_DEBUG=0
+make && make install
+```
+
+- 做软连接
+
+  ```
+  ln -s /application/mysql-5.5.60/ /application/mysql
+  ```
+
+- mysql目录授权
+
+  ```
+  chown -R mysql:mysql /application/mysql-5.5.60/
+  ```
+
+- 复制相关文件
+
+  ```
+  cd /application/mysql/support-files
+  cp my-small.cnf /etc/my.cnf
+  cp mysql.server /etc/init.d/mysqld
+  chmod +x /etc/init.d/mysqld
+  ```
+
+- mysql初始化
+
+  ```
+  cd /application/mysql/scripts/
+  ./mysql_install_db --basedir=/application/mysql/ --datadir=/application/mysql/data/ --user=mysql
+  ```
+
+- 启动mysql
+
+  ```
+  /etc/init.d/mysqld start
+  ```
+
+- 配置环境变量
+
+  ```
+  echo 'export PATH=/application/mysql/bin:$PATH'>>/etc/profile
+  source /etc/profile
+  ```
+
+- 配置登陆密码
+
+  ```
+  /application/mysql//bin/mysqladmin -u root password 'password'
+  ```
+
+- 设置mysql开机启动
+
+  ```
+  chkconfig mysqld on
+  chkconfig --list mysqld        #查看一下
+  ```
+
+- 登录mysql
+
+正常的情况是可以正常登陆进去的，但是我在登录的时候报了以下错误信息：
+
+```
+ERROR 1045 (28000): Access denied for user 'root'@'localhost' (using password: NO)
+```
+
+解决方法：
+
+- 1.停止mysql数据库
+
+  ```
+  /etc/init.d/mysqld stop
+  ```
+
+- 2.执行如下命令
+
+  ```
+  mysqld_safe --user=mysql --skip-grant-tables --skip-networking &   
+  ```
+
+- 3.使用root登录mysql数据库
+
+  ```
+  mysql -u root mysql
+  ```
+
+- 4.更新root密码
+
+  ```
+  UPDATE user SET Password=PASSWORD('password') where USER='root';
+  ```
+
+- 5.刷新权限
+
+  ```
+  FLUSH PRIVILEGES;
+  ```
+
+- 6.退出mysql
+
+- 7.重启mysql
+
+  ```
+  /etc/init.d/mysqld restart
+  ```
+
+- 8.使用root用户重新登录mysql
+
+- ## 设置远程连接能力
+
+  - 授于root账户所有权限
+
+  ```
+  #授予%所有远程ip地址登录root账户的权限，访问密码为rw
+  GRANT ALL PRIVILEGES ON *.* TO root@"%" IDENTIFIED BY "password";
+  flush privileges;
+  exit;
+  ```
+
+  - 设置允许远程访问
+
+  有两种方式，一种是直接关闭防火墙服务，另一种是开放3306端口
+
+  1）关闭防火墙
+
+  ```
+  #关闭服务
+  systemctl stop firewalld
+  
+  #开机禁用
+  systemctl disable firewalld
+  ```
+
+  2）开放3306端口 firewalld 防火墙（centos-7）运行命令,并重启：
+
+  ```
+  firewall-cmd --zone=public --add-port=3306/tcp --permanent
+  firewall-cmd --reload
+  ```
+
+  **完成！**
